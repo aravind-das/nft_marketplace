@@ -5,12 +5,15 @@ import { WagmiConfig, createConfig } from 'wagmi';
 import { sepolia } from 'wagmi/chains';
 import { http } from 'viem';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import ConnectWallet from './components/Wallet';
 import ImageForm from './components/UploadImageForm';
 import { ethers } from 'ethers';
 import NFTMarketplace from './NFTMarketplace_copy.sol/NFTMarketplace.json';
 import axios from 'axios';
 import { Buffer } from 'buffer';
+import Collections from './components/Collections';
+import './App.css';
 
 // Ensure Buffer is available globally
 window.Buffer = window.Buffer || Buffer;
@@ -86,13 +89,6 @@ const App = () => {
 
       setNftCollection((prevCollection) => [...prevCollection, { ...values, imageUrl: url }]);
 
-      // Create a text file with the IPFS URL and trigger download
-      const textBlob = new Blob([url], { type: 'text/plain' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(textBlob);
-      link.download = 'ipfs_url.txt';
-      link.click();
-
       // Show success alert
       alert('Image uploaded and NFT created successfully!');
     } catch (error) {
@@ -105,29 +101,33 @@ const App = () => {
   return (
     <WagmiConfig config={wagmiClient}>
       <QueryClientProvider client={queryClient}>
-        <div className="App">
-          <h1>NFT Marketplace</h1>
-          <ConnectWallet />
-          <ImageForm onSubmit={handleSubmit} />
-          <NFTCollection nftCollection={nftCollection} />
-        </div>
+        <Router>
+          <nav>
+            <ul>
+              <li>
+                <Link to="/">List NFT</Link>
+              </li>
+              <li>
+                <Link to="/collections">Collections</Link>
+              </li>
+            </ul>
+          </nav>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <div className="App">
+                  <h1>List NFT</h1>
+                  <ConnectWallet />
+                  <ImageForm onSubmit={handleSubmit} />
+                </div>
+              }
+            />
+            <Route path="/collections" element={<Collections nftCollection={nftCollection} />} />
+          </Routes>
+        </Router>
       </QueryClientProvider>
     </WagmiConfig>
-  );
-};
-
-const NFTCollection = ({ nftCollection }: { nftCollection: UploadImageFormValues[] }) => {
-  return (
-    <div className="nft-collection">
-      {nftCollection.map((nft, index) => (
-        <div key={index} className="nft-item">
-          <img src={nft.imageUrl} alt={nft.nftName} />
-          <div>{nft.nftName}</div>
-          <div>{nft.nftDescription}</div>
-          <div>{nft.price} ETH</div>
-        </div>
-      ))}
-    </div>
   );
 };
 
