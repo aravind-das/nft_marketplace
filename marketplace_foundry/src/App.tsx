@@ -1,6 +1,6 @@
 // src/App.tsx
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { WagmiConfig, createConfig } from 'wagmi';
 import { sepolia } from 'wagmi/chains';
 import { http } from 'viem';
@@ -58,6 +58,14 @@ const CONTRACT_ADDRESS = '0x37ee1c8a3e07269fcfadd0c1ac19a6c04967d4f8';
 const App = () => {
   const [nftCollection, setNftCollection] = useState<UploadImageFormValues[]>([]);
 
+  useEffect(() => {
+    // Load NFT collection from local storage
+    const savedCollection = localStorage.getItem('nftCollection');
+    if (savedCollection) {
+      setNftCollection(JSON.parse(savedCollection));
+    }
+  }, []);
+
   const handleSubmit = async (values: UploadImageFormValues) => {
     try {
       // Convert base64 image to Blob
@@ -87,7 +95,11 @@ const App = () => {
       const transaction = await contract.createNFT(url);
       await transaction.wait();
 
-      setNftCollection((prevCollection) => [...prevCollection, { ...values, imageUrl: url }]);
+      const newNftCollection = [...nftCollection, { ...values, imageUrl: url }];
+      setNftCollection(newNftCollection);
+
+      // Save NFT collection to local storage
+      localStorage.setItem('nftCollection', JSON.stringify(newNftCollection));
 
       // Show success alert
       alert('Image uploaded and NFT created successfully!');
