@@ -1,33 +1,23 @@
 // src/App.tsx
 
 import React, { useState } from 'react';
-import { WagmiConfig, createConfig, useAccount } from 'wagmi';
-import { mainnet, sepolia } from 'wagmi/chains';
+import { WagmiConfig, createConfig } from 'wagmi';
+import { sepolia } from 'wagmi/chains';
 import { http } from 'viem';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ConnectWallet from './components/Wallet';
 import ImageForm from './components/UploadImageForm';
 import { ethers } from 'ethers';
 import NFTMarketplace from './NFTMarketplace_copy.sol/NFTMarketplace.json';
-import { create } from 'ipfs-http-client';
+import axios from 'axios';
 import { Buffer } from 'buffer';
 
 // Ensure Buffer is available globally
 window.Buffer = window.Buffer || Buffer;
 
-// IPFS Configuration using Alchemy
-const projectId = 'https://eth-sepolia.g.alchemy.com/v2/YoLeHZpDFkIOYCQXcceSXi8lwtn2H-vy';
-const projectSecret = '98062f0955237f77928cfe0bcf98ab1c98930b411d1270cbea8aa323549c6fb6';
-const auth = 'Basic ' + Buffer.from(projectId + ':' + projectSecret).toString('base64');
-
-const client = create({
-  host: 'ipfs.infura.io',
-  port: 5001,
-  protocol: 'https',
-  headers: {
-    authorization: auth,
-  },
-});
+// Pinata Configuration
+const pinataApiKey = '742f5b64733fece091f0';
+const pinataSecretApiKey = 'a332d7f801b0cf447c0130fe376e4677da017427a72e7891337ed2508af07135';
 
 // Query Client
 const queryClient = new QueryClient();
@@ -41,6 +31,17 @@ const wagmiClient = createConfig({
   },
 });
 
+// Helper function to convert base64 to Blob
+const base64ToBlob = (base64: string, type: string) => {
+  const byteCharacters = atob(base64.split(',')[1]);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  return new Blob([byteArray], { type });
+};
+
 // Upload Image Form Values Interface
 interface UploadImageFormValues {
   nftName: string;
@@ -53,12 +54,26 @@ const CONTRACT_ADDRESS = '0x37ee1c8a3e07269fcfadd0c1ac19a6c04967d4f8';
 
 const App = () => {
   const [nftCollection, setNftCollection] = useState<UploadImageFormValues[]>([]);
-  const { address } = useAccount();
 
   const handleSubmit = async (values: UploadImageFormValues) => {
     try {
-      const added = await client.add(values.imageUrl);
-      const url = `https://ipfs.infura.io/ipfs/${added.path}`;
+      // Convert base64 image to Blob
+      const blob = base64ToBlob(values.imageUrl, 'image/png');
+
+      // Create FormData and append the file
+      const data = new FormData();
+      data.append('file', blob, 'image.png');
+
+      const res = await axios.post('https://api.pinata.cloud/pinning/pinFileToIPFS', data, {
+        maxContentLength: Infinity,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          pinata_api_key: pinataApiKey,
+          pinata_secret_api_key: pinataSecretApiKey,
+        },
+      });
+
+      const url = `https://gateway.pinata.cloud/ipfs/${res.data.IpfsHash}`;
 
       console.log('Image uploaded to IPFS:', url); // Log the IPFS URL
 
@@ -72,9 +87,9 @@ const App = () => {
       setNftCollection((prevCollection) => [...prevCollection, { ...values, imageUrl: url }]);
 
       // Create a text file with the IPFS URL and trigger download
-      const blob = new Blob([url], { type: 'text/plain' });
+      const textBlob = new Blob([url], { type: 'text/plain' });
       const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
+      link.href = URL.createObjectURL(textBlob);
       link.download = 'ipfs_url.txt';
       link.click();
 
@@ -94,19 +109,25 @@ const App = () => {
           <h1>NFT Marketplace</h1>
           <ConnectWallet />
           <ImageForm onSubmit={handleSubmit} />
-          <div className="nft-collection">
-            {nftCollection.map((nft, index) => (
-              <div key={index} className="nft-item">
-                <img src={nft.imageUrl} alt={nft.nftName} />
-                <div>{nft.nftName}</div>
-                <div>{nft.nftDescription}</div>
-                <div>{nft.price} ETH</div>
-              </div>
-            ))}
-          </div>
+          <NFTCollection nftCollection={nftCollection} />
         </div>
       </QueryClientProvider>
     </WagmiConfig>
+  );
+};
+
+const NFTCollection = ({ nftCollection }: { nftCollection: UploadImageFormValues[] }) => {
+  return (
+    <div className="nft-collection">
+      {nftCollection.map((nft, index) => (
+        <div key={index} className="nft-item">
+          <img src={nft.imageUrl} alt={nft.nftName} />
+          <div>{nft.nftName}</div>
+          <div>{nft.nftDescription}</div>
+          <div>{nft.price} ETH</div>
+        </div>
+      ))}
+    </div>
   );
 };
 
