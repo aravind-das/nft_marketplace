@@ -1,9 +1,10 @@
 import { useFormik } from 'formik';
 
 interface UploadImageFormValues {
-  name: string;
-  cost: number;
-  url: string;
+  nftName: string;
+  nftDescription: string;
+  price: number;
+  imageUrl: string;
 }
 
 interface UploadImageFormProps {
@@ -13,46 +14,68 @@ interface UploadImageFormProps {
 export default function ImageForm(props: UploadImageFormProps) {
   const formik = useFormik({
     initialValues: {
-      name: '',
-      cost: 0,
-      url: ''
+      nftName: '',
+      nftDescription: '',
+      price: 0,
+      imageUrl: ''
     },
     onSubmit: (values: UploadImageFormValues) => props.onSubmit(values)
   });
 
-  const { values, handleChange } = formik;
+  const { values, handleChange, setFieldValue } = formik;
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.currentTarget.files && event.currentTarget.files[0]) {
+      const file = event.currentTarget.files[0];
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFieldValue('imageUrl', reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   return (
     <form onSubmit={formik.handleSubmit}>
-      <label htmlFor="name">Name</label>
+      <label htmlFor="nftName">NFT Name</label>
       <input
-        id="name"
+        id="nftName"
         type="text"
-        name="name"
-        value={values.name}
+        name="nftName"
+        value={values.nftName}
         onChange={handleChange}
         required
       />
 
-      <label htmlFor="cost">Cost</label>
+      <label htmlFor="nftDescription">NFT Description</label>
+      <textarea
+        id="nftDescription"
+        name="nftDescription"
+        value={values.nftDescription}
+        onChange={handleChange}
+        required
+      />
+
+      <label htmlFor="price">Price (in ETH)</label>
       <input
-        id="cost"
+        id="price"
         type="number"
-        name="cost"
-        value={values.cost}
+        name="price"
+        value={values.price}
         onChange={handleChange}
         required
       />
 
-      <label htmlFor="url">URL</label>
+      <label htmlFor="image">Choose Image</label>
       <input
-        id="url"
-        type="text"
-        name="url"
-        value={values.url}
-        onChange={handleChange}
+        id="image"
+        type="file"
+        accept="image/*"
+        onChange={handleImageUpload}
+        required
       />
-      <button type="submit">Submit</button>
+
+      <button type="submit">List NFT</button>
     </form>
   );
 }

@@ -2,14 +2,15 @@ import { WagmiProvider } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { wagmiConfig } from './configs';
 import ConnectWallet from './components/Wallet';
-import UploadImageForm from './components/UploadImageForm';
+import ImageForm from './components/UploadImageForm';
 
 const queryClient = new QueryClient();
 
 interface UploadImageFormValues {
-  name: string;
-  cost: number;
-  url: string;
+  nftName: string;
+  nftDescription: string;
+  price: number;
+  imageUrl: string;
 }
 
 const handleSubmit = (args: UploadImageFormValues) => {
@@ -24,7 +25,7 @@ function App() {
         <div className="App">
           <div>Hello World</div>
           <ConnectWallet />
-          <UploadImageForm onSubmit={handleSubmit}/>
+          <ImageForm onSubmit={handleSubmit}/>
         </div>
       </QueryClientProvider>
     </WagmiProvider>
