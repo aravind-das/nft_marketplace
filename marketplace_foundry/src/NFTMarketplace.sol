@@ -7,15 +7,17 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract NFTMarketplace is ERC721URIStorage, Ownable {
-    uint256 private _tokenIds;
+    uint256 public tokenCounter;
 
-    constructor() ERC721("NFTMarketplace", "NFTM") Ownable(msg.sender) {}
+    constructor(string memory name, string memory symbol, address owner) ERC721(name, symbol) Ownable(owner) {
+        tokenCounter = 0;
+    }
 
     function createNFT(string memory tokenURI) public onlyOwner returns (uint256) {
-        uint256 newItemId = _tokenIds;
-        _mint(msg.sender, newItemId);
+        uint256 newItemId = tokenCounter;
+        _safeMint(msg.sender, newItemId);
         _setTokenURI(newItemId, tokenURI);
-        _tokenIds += 1;
+        tokenCounter += 1;
         return newItemId;
     }
 }

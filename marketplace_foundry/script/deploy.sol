@@ -4,12 +4,12 @@
 pragma solidity ^0.8.0;
 
 import "forge-std/Script.sol";
-import "../src/NFTMarketplace.sol";
+import "../src/NFTFactory.sol";
 
-contract DeployNFTMarketplace is Script {
+contract DeployNFTFactory is Script {
     function run() external {
         vm.startBroadcast();
-        new NFTMarketplace();
+        new NFTFactory();
         vm.stopBroadcast();
     }
 }
