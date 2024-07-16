@@ -1,5 +1,3 @@
-// src/App.tsx
-
 import React, { useState, useEffect } from 'react';
 import { WagmiConfig, createConfig } from 'wagmi';
 import { sepolia } from 'wagmi/chains';
@@ -87,11 +85,14 @@ const App = () => {
               </li>
             </ul>
           </nav>
+          <ConnectWallet />
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/create-collection" element={<CreateCollection factoryContract={factoryContract} />} />
             <Route path="/collections" element={<ViewCollections factoryContract={factoryContract} />} />
-            <Route path="/collections/:address" element={<CollectionDetail />} />
+            <Route path="/collections/:address" element={<CollectionOptions />} />
+            <Route path="/collections/:address/list-nft" element={<ListNFT />} />
+            <Route path="/collections/:address/view-nfts" element={<ViewNFTs />} />
           </Routes>
         </Router>
       </QueryClientProvider>
@@ -182,7 +183,27 @@ const ViewCollections = ({ factoryContract }: { factoryContract: ethers.Contract
   );
 };
 
-const CollectionDetail = () => {
+const CollectionOptions = () => {
+  const { address } = useParams();
+
+  return (
+    <div className="App">
+      <h1>Collection: {address}</h1>
+      <nav>
+        <ul>
+          <li>
+            <Link to={`/collections/${address}/list-nft`}>List NFT</Link>
+          </li>
+          <li>
+            <Link to={`/collections/${address}/view-nfts`}>View NFTs</Link>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  );
+};
+
+const ListNFT = () => {
   const { address } = useParams();
   const [nftCollection, setNftCollection] = useState<UploadImageFormValues[]>([]);
 
@@ -196,10 +217,7 @@ const CollectionDetail = () => {
   const handleSubmit = async (values: UploadImageFormValues) => {
     try {
       console.log('Start uploading image to Pinata');
-      // Convert base64 image to Blob
       const blob = base64ToBlob(values.imageUrl, 'image/png');
-
-      // Create FormData and append the file
       const data = new FormData();
       data.append('file', blob, 'image.png');
 
@@ -214,7 +232,7 @@ const CollectionDetail = () => {
 
       const url = `https://gateway.pinata.cloud/ipfs/${res.data.IpfsHash}`;
 
-      console.log('Image uploaded to IPFS:', url); // Log the IPFS URL
+      console.log('Image uploaded to IPFS:', url);
 
       const provider = new ethers.providers.Web3Provider((window as any).ethereum);
       const signer = provider.getSigner();
@@ -224,7 +242,7 @@ const CollectionDetail = () => {
       console.log('Calling createNFT with URL:', url);
 
       const transaction = await contract.createNFT(url, {
-        gasLimit: 500000, // Set manual gas limit
+        gasLimit: 500000,
       });
 
       await transaction.wait();
@@ -233,16 +251,14 @@ const CollectionDetail = () => {
       const newNftCollection = [...nftCollection, { ...values, imageUrl: url }];
       setNftCollection(newNftCollection);
 
-      // Save NFT collection to local storage
       localStorage.setItem(`nftCollection-${address}`, JSON.stringify(newNftCollection));
 
-      // Show success alert
       alert('Image uploaded and NFT created successfully!');
     } catch (error) {
       console.error('Error uploading file:', error);
 
       if (error instanceof Error && 'code' in error) {
-        const ethersError = error as any; // Type assertion to access error code
+        const ethersError = error as any;
 
         if (ethersError.code === 'UNPREDICTABLE_GAS_LIMIT') {
           console.error('Transaction may fail or require manual gas limit.');
@@ -250,15 +266,32 @@ const CollectionDetail = () => {
           console.error('Transaction failed:', ethersError.transactionHash);
         }
       }
-      // Show failure alert
       alert('Failed to upload image or create NFT.');
     }
   };
 
   return (
     <div className="App">
-      <h1>Collection: {address}</h1>
+      <h1>List a new NFT</h1>
       <ImageForm onSubmit={handleSubmit} />
+    </div>
+  );
+};
+
+const ViewNFTs = () => {
+  const { address } = useParams();
+  const [nftCollection, setNftCollection] = useState<UploadImageFormValues[]>([]);
+
+  useEffect(() => {
+    const savedCollection = localStorage.getItem(`nftCollection-${address}`);
+    if (savedCollection) {
+      setNftCollection(JSON.parse(savedCollection));
+    }
+  }, [address]);
+
+  return (
+    <div className="App">
+      <h1>NFT Collection: {address}</h1>
       <div className="nft-collection">
         {nftCollection.map((nft, index) => (
           <div key={index} className="nft-item">
