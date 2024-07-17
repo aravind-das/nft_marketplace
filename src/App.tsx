@@ -13,20 +13,20 @@ import axios from 'axios';
 import { Buffer } from 'buffer';
 import './App.css';
 
-import 'dotenv/config';
+
 
 // Ensure Buffer is available globally
 window.Buffer = window.Buffer || Buffer;
 
 // Pinata Configuration
-const pinataApiKey = process.env.PINATA_API_KEY;
-const pinataSecretApiKey = process.env.PINATA_SECRET_API_KEY;
+const pinataApiKey = process.env.REACT_APP_PINATA_API_KEY;;
+const pinataSecretApiKey = process.env.REACT_APP_PINATA_SECRET_API_KEY;
 
 // Query Client
 const queryClient = new QueryClient();
 
 // Configure wagmi
-const url = process.env.SEPOLIA_RPC_URL;
+const url = process.env.REACT_APP_SEPOLIA_RPC_URL;
 const wagmiClient = createConfig({
   chains: [sepolia],
   transports: {
@@ -54,7 +54,7 @@ interface UploadImageFormValues {
 }
 
 // Contract addresses
-const FACTORY_CONTRACT_ADDRESS = process.env.FACTORY_CONTRACT_ADDRESS || '';
+const FACTORY_CONTRACT_ADDRESS = '0xeff886ddb64f2e04400220ed869b3613af3a6860';
 
 const App = () => {
   const [factoryContract, setFactoryContract] = useState<ethers.Contract | null>(null);
