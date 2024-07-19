@@ -1,8 +1,10 @@
 # NFT Markteplace
 
-## Getting Started with Create React App
+## Application Deployed on IPFS
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+IPFS Hash: bafybeigq2facqmrtlcfxcsv5e45l5zogzbd3ipwrittouvaogv3crvq5tq
+App can be accessed through IPFS URL (https://ipfs.io/ipfs/bafybeigq2facqmrtlcfxcsv5e45l5zogzbd3ipwrittouvaogv3crvq5tq/) or through fleek: https://crashing-engine-hissing.on-fleek.app/
+
 
 ## Available Scripts
 
