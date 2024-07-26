@@ -1,50 +1,66 @@
-# NFT Markteplace
+## Foundry
 
-## Application Deployed on IPFS
+**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
 
-IPFS Hash: bafybeigq2facqmrtlcfxcsv5e45l5zogzbd3ipwrittouvaogv3crvq5tq
-App can be accessed through IPFS URL (https://ipfs.io/ipfs/bafybeigq2facqmrtlcfxcsv5e45l5zogzbd3ipwrittouvaogv3crvq5tq/) or through fleek: https://crashing-engine-hissing.on-fleek.app/
+Foundry consists of:
 
+-   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
+-   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
+-   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
+-   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
 
-## Available Scripts
+## Documentation
 
-In the project directory, you can run:
+https://book.getfoundry.sh/
 
-### `npm start`
+## Usage
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+### Build
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+```shell
+$ forge build
+```
 
-### `npm test`
+### Test
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```shell
+$ forge test
+```
 
-### `npm run build`
+### Format
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+```shell
+$ forge fmt
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Gas Snapshots
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```shell
+$ forge snapshot
+```
 
-### `npm run eject`
+### Anvil
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+```shell
+$ anvil
+```
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+### Deploy
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+```shell
+$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+```
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+### Cast
 
-## Learn More
+```shell
+$ cast <subcommand>
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+### Help
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+```shell
+$ forge --help
+$ anvil --help
+$ cast --help
+```
