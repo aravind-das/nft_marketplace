@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { WagmiConfig, createConfig } from 'wagmi';
 import { sepolia } from 'wagmi/chains';
 import { http } from 'viem';
@@ -13,13 +13,13 @@ import axios from 'axios';
 import { Buffer } from 'buffer';
 import './App.css';
 
-
+console.log(process.env);
 
 // Ensure Buffer is available globally
 window.Buffer = window.Buffer || Buffer;
 
 // Pinata Configuration
-const pinataApiKey = process.env.REACT_APP_PINATA_API_KEY;;
+const pinataApiKey = process.env.REACT_APP_PINATA_API_KEY;
 const pinataSecretApiKey = process.env.REACT_APP_PINATA_SECRET_API_KEY;
 
 // Query Client
@@ -50,21 +50,28 @@ interface UploadImageFormValues {
   nftName: string;
   nftDescription: string;
   price: number;
-  imageUrl: string;
+  paymentTokenAddress: string;
+  imageContent: string;
 }
 
 // Contract addresses
-const FACTORY_CONTRACT_ADDRESS = '0xeff886ddb64f2e04400220ed869b3613af3a6860';
+// const FACTORY_CONTRACT_ADDRESS = '0xeff886ddb64f2e04400220ed869b3613af3a6860';
+const FACTORY_CONTRACT_ADDRESS = process.env.REACT_APP_FACTORY_CONTRACT_ADDRESS || '';
+const PAYMENT_HANDLER_ADDRESS = process.env.REACT_APP_PAYMENT_CONTRACT_ADDRESS || '';
 
 const App = () => {
   const [factoryContract, setFactoryContract] = useState<ethers.Contract | null>(null);
 
   useEffect(() => {
     const initializeContract = async () => {
-      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
-      const signer = provider.getSigner();
-      const contract = new ethers.Contract(FACTORY_CONTRACT_ADDRESS, NFTFactory.abi, signer);
-      setFactoryContract(contract);
+      try {
+        const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+        const signer = provider.getSigner();
+        const contract = new ethers.Contract(FACTORY_CONTRACT_ADDRESS, NFTFactory.abi, signer);
+        setFactoryContract(contract);
+      } catch (error) {
+        console.error('Error initializing contract:', error);
+      }
     };
 
     initializeContract();
@@ -119,7 +126,11 @@ const CreateCollection = ({ factoryContract }: { factoryContract: ethers.Contrac
   const handleCreateCollection = async () => {
     if (factoryContract) {
       try {
-        const transaction = await factoryContract.createCollection(name, symbol);
+        console.log(factoryContract);
+        const transaction = await factoryContract.createCollection(name, symbol, PAYMENT_HANDLER_ADDRESS);
+        // const transaction = await factoryContract.createCollection(name, symbol, {
+        //   gasLimit: 500000
+        // });
         const receipt = await transaction.wait();
         const collectionAddress = receipt.events[0].args.collection;
         console.log('Collection created with address:', collectionAddress);
@@ -219,11 +230,11 @@ const ListNFT = () => {
   const handleSubmit = async (values: UploadImageFormValues) => {
     try {
       console.log('Start uploading image to Pinata');
-      const blob = base64ToBlob(values.imageUrl, 'image/png');
+      const blob = base64ToBlob(values.imageContent, 'image/png');
       const data = new FormData();
       data.append('file', blob, 'image.png');
 
-      const res = await axios.post('https://api.pinata.cloud/pinning/pinFileToIPFS', data, {
+      const imageRes = await axios.post('https://api.pinata.cloud/pinning/pinFileToIPFS', data, {
         maxContentLength: Infinity,
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -232,45 +243,76 @@ const ListNFT = () => {
         },
       });
 
-      const url = `https://gateway.pinata.cloud/ipfs/${res.data.IpfsHash}`;
+      const imageUrl = `https://gateway.pinata.cloud/ipfs/${imageRes.data.IpfsHash}`;
+      console.log('Image uploaded to IPFS:', imageUrl);
 
-      console.log('Image uploaded to IPFS:', url);
+      // Create metadata JSON
+      const metadata = {
+        name: values.nftName,
+        description: values.nftDescription,
+        image: imageUrl,
+      };
+
+      const metadataBlob = new Blob([JSON.stringify(metadata)], { type: 'application/json' });
+      const metadataData = new FormData();
+      metadataData.append('file', metadataBlob, 'metadata.json');
+
+      const metadataRes = await axios.post('https://api.pinata.cloud/pinning/pinFileToIPFS', metadataData, {
+        maxContentLength: Infinity,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          pinata_api_key: pinataApiKey,
+          pinata_secret_api_key: pinataSecretApiKey,
+        },
+      });
+
+      const metadataUrl = `https://gateway.pinata.cloud/ipfs/${metadataRes.data.IpfsHash}`;
+      console.log('Metadata uploaded to IPFS:', metadataUrl);
 
       const provider = new ethers.providers.Web3Provider((window as any).ethereum);
       const signer = provider.getSigner();
       console.log('Provider and signer initialized');
       const contract = new ethers.Contract(address!, NFTMarketplace.abi, signer);
 
-      console.log('Calling createNFT with URL:', url);
+      console.log('Calling createNFT with Metadata URL:', metadataUrl);
 
-      const transaction = await contract.createNFT(url, {
+      const transaction = await contract.createNFT(metadataUrl, values.paymentTokenAddress, ethers.utils.parseUnits(values.price.toString(), 18), {
         gasLimit: 500000,
       });
 
-      await transaction.wait();
+      const receipt = await transaction.wait();
       console.log('Transaction successful:', transaction.hash);
 
-      const newNftCollection = [...nftCollection, { ...values, imageUrl: url }];
+      // Extract tokenId from the transaction receipt
+      const tokenId = receipt.events[0].args.tokenId.toNumber();
+
+      const newNftItem: any = {
+        ...values,
+        status: 'available',
+        tokenId: tokenId,
+        owner: await signer.getAddress(),
+      };
+
+      const newNftCollection = [...nftCollection, newNftItem];
       setNftCollection(newNftCollection);
 
       localStorage.setItem(`nftCollection-${address}`, JSON.stringify(newNftCollection));
 
-      alert('Image uploaded and NFT created successfully!');
-    } catch (error) {
+      alert('Image and metadata uploaded, and NFT created successfully!');
+    } catch (error: any) {
       console.error('Error uploading file:', error);
 
-      if (error instanceof Error && 'code' in error) {
-        const ethersError = error as any;
-
-        if (ethersError.code === 'UNPREDICTABLE_GAS_LIMIT') {
-          console.error('Transaction may fail or require manual gas limit.');
-        } else if (ethersError.code === 'CALL_EXCEPTION') {
-          console.error('Transaction failed:', ethersError.transactionHash);
-        }
+      // Extract the revert reason from the error
+      let message = 'Failed to purchase NFT.';
+      if (error?.error?.message) {
+        message = error.error.message;
+      } else if (error?.message) {
+        message = error.message;
       }
-      alert('Failed to upload image or create NFT.');
+      alert(message);
     }
   };
+
 
   return (
     <div className="App">
@@ -281,15 +323,131 @@ const ListNFT = () => {
 };
 
 const ViewNFTs = () => {
-  const { address } = useParams();
-  const [nftCollection, setNftCollection] = useState<UploadImageFormValues[]>([]);
+  const { address } = useParams<{ address: string }>();
+  const [nftCollection, setNftCollection] = useState<any[]>([]);
+  const [marketplaceContract, setMarketplaceContract] = useState<ethers.Contract | null>(null);
+  const [currentAccount, setCurrentAccount] = useState<string | null>(null);
+
+  const fetchNFTs = useCallback(async () => {
+    if (!address || !marketplaceContract || !currentAccount) return;
+
+    try {
+      const nftItems = await marketplaceContract.fetchAllNFTs();
+      const items = await Promise.all(nftItems.map(async (nft: any) => {
+        const tokenId = nft[0].toNumber(); // Convert BigNumber to number
+        const owner = nft[1];
+        const tokenURI = nft[2];
+        const paymentToken = nft[3];
+        const price = ethers.utils.formatUnits(nft[4].toString(), 'ether'); // Convert BigNumber to string and format as ether
+
+        const meta = await fetch(tokenURI).then((response) => response.json());
+        const status = owner.toLowerCase() === currentAccount?.toLowerCase() ? 'sold' : 'available';
+
+        return {
+          tokenId: tokenId,
+          owner: owner,
+          tokenURI: tokenURI,
+          paymentTokenAddress: paymentToken,
+          price: price,
+          imageUrl: meta.image, // Use image URL from metadata
+          nftName: meta.name,
+          nftDescription: meta.description,
+          status: status,
+        };
+      }));
+      setNftCollection(items);
+    } catch (error) {
+      console.error('Error fetching NFTs:', error);
+    }
+  }, [address, marketplaceContract, currentAccount]);
+
+
 
   useEffect(() => {
-    const savedCollection = localStorage.getItem(`nftCollection-${address}`);
-    if (savedCollection) {
-      setNftCollection(JSON.parse(savedCollection));
+    const initializeContract = async () => {
+      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const signer = provider.getSigner();
+      const contract = new ethers.Contract(address!, NFTMarketplace.abi, signer);
+      setMarketplaceContract(contract);
+
+      // Get current account
+      const accounts = await provider.send("eth_requestAccounts", []);
+      setCurrentAccount(accounts[0]);
+    };
+
+    if (address) {
+      initializeContract();
     }
   }, [address]);
+
+  useEffect(() => {
+    fetchNFTs();
+  }, [fetchNFTs]);
+
+  const handlePurchase = async (tokenId: number) => {
+    if (marketplaceContract) {
+      try {
+        const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+        const signer = provider.getSigner();
+        const account = await signer.getAddress();
+
+        // Get the payment handler address
+        const paymentHandlerAddress = await marketplaceContract.paymentHandler();
+        const nft = nftCollection.find(nft => nft.tokenId === tokenId);
+        if (!nft) {
+          console.error('NFT not found');
+          return;
+        }
+
+        const paymentToken = new ethers.Contract(nft.paymentTokenAddress, [
+          "function balanceOf(address owner) view returns (uint256)",
+          "function allowance(address owner, address spender) view returns (uint256)",
+          "function approve(address spender, uint256 value) public returns (bool)"
+        ], signer);
+
+        const tokenBalance = await paymentToken.balanceOf(account);
+        const allowance = await paymentToken.allowance(account, paymentHandlerAddress);
+
+        console.log('ERC20 Token Balance:', tokenBalance.toString());
+        console.log('Allowance:', allowance.toString());
+
+        const priceInWei = ethers.utils.parseUnits(nft.price.toString(), 18);
+
+        if (tokenBalance.lt(priceInWei)) {
+          alert('Insufficient token balance to purchase NFT.');
+          return;
+        }
+
+        if (allowance.lt(priceInWei)) {
+          const approveTx = await paymentToken.approve(paymentHandlerAddress, priceInWei);
+          await approveTx.wait();
+          console.log('Tokens approved successfully.');
+        }
+
+        const transaction = await marketplaceContract.purchaseNFT(tokenId, {
+          gasLimit: 500000,
+        });
+
+        await transaction.wait();
+        alert('NFT purchased successfully!');
+        fetchNFTs();
+      } catch (error: any) {
+        console.error('Error purchasing NFT:', error);
+
+        let message = 'Failed to purchase NFT.';
+        if (error?.error?.message) {
+          message = error.error.message;
+        } else if (error?.message) {
+          message = error.message;
+        }
+        alert(message);
+      }
+    } else {
+      console.error('Marketplace contract is not initialized');
+    }
+  };
+
+
 
   return (
     <div className="App">
@@ -301,11 +459,17 @@ const ViewNFTs = () => {
             <div>{nft.nftName}</div>
             <div>{nft.nftDescription}</div>
             <div>{nft.price} ETH</div>
+            {nft.status === 'sold' ? (
+              <div>Status: Sold</div>
+            ) : (
+              <button onClick={() => handlePurchase(nft.tokenId)}>Buy NFT</button>
+            )}
           </div>
         ))}
       </div>
     </div>
   );
+
 };
 
 export default App;

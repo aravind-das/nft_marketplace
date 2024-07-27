@@ -6,7 +6,8 @@ interface UploadImageFormValues {
   nftName: string;
   nftDescription: string;
   price: number;
-  imageUrl: string;
+  paymentTokenAddress: string;
+  imageContent: string;
 }
 
 interface UploadImageFormProps {
@@ -19,7 +20,8 @@ export default function ImageForm(props: UploadImageFormProps) {
       nftName: '',
       nftDescription: '',
       price: 0,
-      imageUrl: ''
+      paymentTokenAddress: '',
+      imageContent: ''
     },
     onSubmit: (values: UploadImageFormValues) => props.onSubmit(values)
   });
@@ -31,7 +33,7 @@ export default function ImageForm(props: UploadImageFormProps) {
       const file = event.currentTarget.files[0];
       const reader = new FileReader();
       reader.onloadend = () => {
-        setFieldValue('imageUrl', reader.result as string);
+        setFieldValue('imageContent', reader.result as string);
       };
       reader.readAsDataURL(file);
     }
@@ -64,6 +66,16 @@ export default function ImageForm(props: UploadImageFormProps) {
         type="number"
         name="price"
         value={values.price}
+        onChange={handleChange}
+        required
+      />
+
+      <label htmlFor="paymentTokenAddress">Payment Token Address</label>
+      <input
+        id="paymentTokenAddress"
+        type="text"
+        name="paymentTokenAddress"
+        value={values.paymentTokenAddress}
         onChange={handleChange}
         required
       />
