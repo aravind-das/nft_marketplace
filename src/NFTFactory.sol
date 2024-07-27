@@ -1,5 +1,3 @@
-// src/NFTFactory.sol
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
@@ -13,8 +11,8 @@ contract NFTFactory is Ownable {
 
     constructor() Ownable(msg.sender) {}
 
-    function createCollection(string memory name, string memory symbol) external onlyOwner {
-        NFTMarketplace collection = new NFTMarketplace(name, symbol, msg.sender);
+    function createCollection(string memory name, string memory symbol, address paymentHandlerAddress) external onlyOwner {
+        NFTMarketplace collection = new NFTMarketplace(name, symbol, msg.sender, paymentHandlerAddress);
         nftCollections.push(address(collection));
         emit CollectionCreated(msg.sender, address(collection));
     }
