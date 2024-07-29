@@ -5,7 +5,7 @@ import { http } from 'viem';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom';
 import ConnectWallet from './components/Wallet';
-import ImageForm from './components/UploadImageForm';
+import NFTForm from './components/NFTForm';
 import { ethers } from 'ethers';
 import NFTFactory from './NFTFactory.json';
 import NFTMarketplace from './NFTMarketplace.json';
@@ -45,17 +45,7 @@ const base64ToBlob = (base64: string, type: string) => {
   return new Blob([byteArray], { type });
 };
 
-// Upload Image Form Values Interface
-interface UploadImageFormValues {
-  nftName: string;
-  nftDescription: string;
-  price: number;
-  paymentTokenAddress: string;
-  imageContent: string;
-}
-
 // Contract addresses
-// const FACTORY_CONTRACT_ADDRESS = '0xeff886ddb64f2e04400220ed869b3613af3a6860';
 const FACTORY_CONTRACT_ADDRESS = process.env.REACT_APP_FACTORY_CONTRACT_ADDRESS || '';
 const PAYMENT_HANDLER_ADDRESS = process.env.REACT_APP_PAYMENT_CONTRACT_ADDRESS || '';
 
@@ -128,9 +118,6 @@ const CreateCollection = ({ factoryContract }: { factoryContract: ethers.Contrac
       try {
         console.log(factoryContract);
         const transaction = await factoryContract.createCollection(name, symbol, PAYMENT_HANDLER_ADDRESS);
-        // const transaction = await factoryContract.createCollection(name, symbol, {
-        //   gasLimit: 500000
-        // });
         const receipt = await transaction.wait();
         const collectionAddress = receipt.events[0].args.collection;
         console.log('Collection created with address:', collectionAddress);
@@ -218,16 +205,9 @@ const CollectionOptions = () => {
 
 const ListNFT = () => {
   const { address } = useParams();
-  const [nftCollection, setNftCollection] = useState<UploadImageFormValues[]>([]);
+  const [nftCollection, setNftCollection] = useState<any[]>([]);
 
-  useEffect(() => {
-    const savedCollection = localStorage.getItem(`nftCollection-${address}`);
-    if (savedCollection) {
-      setNftCollection(JSON.parse(savedCollection));
-    }
-  }, [address]);
-
-  const handleSubmit = async (values: UploadImageFormValues) => {
+  const handleSubmit = async (values: any) => {
     try {
       console.log('Start uploading image to Pinata');
       const blob = base64ToBlob(values.imageContent, 'image/png');
@@ -246,7 +226,6 @@ const ListNFT = () => {
       const imageUrl = `https://gateway.pinata.cloud/ipfs/${imageRes.data.IpfsHash}`;
       console.log('Image uploaded to IPFS:', imageUrl);
 
-      // Create metadata JSON
       const metadata = {
         name: values.nftName,
         description: values.nftDescription,
@@ -276,15 +255,24 @@ const ListNFT = () => {
 
       console.log('Calling createNFT with Metadata URL:', metadataUrl);
 
-      const transaction = await contract.createNFT(metadataUrl, values.paymentTokenAddress, ethers.utils.parseUnits(values.price.toString(), 18), {
-        gasLimit: 500000,
-      });
+      let transaction;
+      if (values.listingType === 'erc20') {
+        transaction = await contract.createNFT(metadataUrl, values.paymentTokenAddress, ethers.utils.parseUnits(values.price.toString(), 18), {
+          gasLimit: 500000,
+        });
+      } else if (values.listingType === 'erc1155') {
+        transaction = await contract.listERC1155(values.erc1155TokenAddress, values.tokenId, values.amount, ethers.utils.parseUnits(values.price.toString(), 18), {
+          gasLimit: 500000,
+        });
+      }
 
       const receipt = await transaction.wait();
       console.log('Transaction successful:', transaction.hash);
 
-      // Extract tokenId from the transaction receipt
-      const tokenId = receipt.events[0].args.tokenId.toNumber();
+      // Check if receipt.events[0] and args are defined
+      const tokenId = receipt.events && receipt.events[0] && receipt.events[0].args && receipt.events[0].args.tokenId
+        ? receipt.events[0].args.tokenId.toNumber()
+        : values.tokenId;
 
       const newNftItem: any = {
         ...values,
@@ -293,17 +281,13 @@ const ListNFT = () => {
         owner: await signer.getAddress(),
       };
 
-      const newNftCollection = [...nftCollection, newNftItem];
-      setNftCollection(newNftCollection);
-
-      localStorage.setItem(`nftCollection-${address}`, JSON.stringify(newNftCollection));
+      setNftCollection([...nftCollection, newNftItem]);
 
       alert('Image and metadata uploaded, and NFT created successfully!');
     } catch (error: any) {
       console.error('Error uploading file:', error);
 
-      // Extract the revert reason from the error
-      let message = 'Failed to purchase NFT.';
+      let message = 'Failed to upload image or create NFT.';
       if (error?.error?.message) {
         message = error.error.message;
       } else if (error?.message) {
@@ -317,7 +301,7 @@ const ListNFT = () => {
   return (
     <div className="App">
       <h1>List a new NFT</h1>
-      <ImageForm onSubmit={handleSubmit} />
+      <NFTForm onSubmit={handleSubmit} />
     </div>
   );
 };
@@ -332,7 +316,7 @@ const ViewNFTs = () => {
     if (!address || !marketplaceContract || !currentAccount) return;
 
     try {
-      const nftItems = await marketplaceContract.fetchAllNFTs();
+      const [nftItems, erc1155Items] = await marketplaceContract.fetchAllNFTs();
       const items = await Promise.all(nftItems.map(async (nft: any) => {
         const tokenId = nft[0].toNumber(); // Convert BigNumber to number
         const owner = nft[1];
@@ -353,14 +337,28 @@ const ViewNFTs = () => {
           nftName: meta.name,
           nftDescription: meta.description,
           status: status,
+          listingType: 'erc20',
         };
       }));
-      setNftCollection(items);
+
+      const erc1155ItemsProcessed = erc1155Items.map((item: any) => ({
+        tokenId: item.tokenId.toNumber(),
+        owner: item.owner,
+        tokenAddress: item.tokenAddress,
+        amount: item.amount.toNumber(),
+        price: ethers.utils.formatUnits(item.price.toString(), 'ether'),
+        listingType: 'erc1155',
+        imageUrl: '', // Add your image URL here if you have any, otherwise handle this in the render function
+        nftName: 'ERC1155 Token',
+        nftDescription: `Amount: ${item.amount}`,
+      }));
+
+      setNftCollection([...items, ...erc1155ItemsProcessed]);
+      console.log('NFTs fetched:', items, erc1155ItemsProcessed);
     } catch (error) {
       console.error('Error fetching NFTs:', error);
     }
   }, [address, marketplaceContract, currentAccount]);
-
 
 
   useEffect(() => {
@@ -384,49 +382,55 @@ const ViewNFTs = () => {
     fetchNFTs();
   }, [fetchNFTs]);
 
-  const handlePurchase = async (tokenId: number) => {
+  const handlePurchase = async (tokenId: number, listingType: string) => {
     if (marketplaceContract) {
       try {
         const provider = new ethers.providers.Web3Provider((window as any).ethereum);
         const signer = provider.getSigner();
         const account = await signer.getAddress();
 
-        // Get the payment handler address
-        const paymentHandlerAddress = await marketplaceContract.paymentHandler();
         const nft = nftCollection.find(nft => nft.tokenId === tokenId);
         if (!nft) {
           console.error('NFT not found');
           return;
         }
 
-        const paymentToken = new ethers.Contract(nft.paymentTokenAddress, [
-          "function balanceOf(address owner) view returns (uint256)",
-          "function allowance(address owner, address spender) view returns (uint256)",
-          "function approve(address spender, uint256 value) public returns (bool)"
-        ], signer);
+        if (listingType === 'erc20') {
+          const paymentHandlerAddress = await marketplaceContract.paymentHandler();
 
-        const tokenBalance = await paymentToken.balanceOf(account);
-        const allowance = await paymentToken.allowance(account, paymentHandlerAddress);
+          const paymentToken = new ethers.Contract(nft.paymentTokenAddress, [
+            "function balanceOf(address owner) view returns (uint256)",
+            "function allowance(address owner, address spender) view returns (uint256)",
+            "function approve(address spender, uint256 value) public returns (bool)"
+          ], signer);
 
-        console.log('ERC20 Token Balance:', tokenBalance.toString());
-        console.log('Allowance:', allowance.toString());
+          const tokenBalance = await paymentToken.balanceOf(account);
+          const allowance = await paymentToken.allowance(account, paymentHandlerAddress);
 
-        const priceInWei = ethers.utils.parseUnits(nft.price.toString(), 18);
+          console.log('ERC20 Token Balance:', tokenBalance.toString());
+          console.log('Allowance:', allowance.toString());
 
-        if (tokenBalance.lt(priceInWei)) {
-          alert('Insufficient token balance to purchase NFT.');
-          return;
+          const priceInWei = ethers.utils.parseUnits(nft.price.toString(), 18);
+
+          if (tokenBalance.lt(priceInWei)) {
+            alert('Insufficient token balance to purchase NFT.');
+            return;
+          }
+
+          if (allowance.lt(priceInWei)) {
+            const approveTx = await paymentToken.approve(paymentHandlerAddress, priceInWei);
+            await approveTx.wait();
+            console.log('Tokens approved successfully.');
+          }
         }
 
-        if (allowance.lt(priceInWei)) {
-          const approveTx = await paymentToken.approve(paymentHandlerAddress, priceInWei);
-          await approveTx.wait();
-          console.log('Tokens approved successfully.');
-        }
+        console.log('Purchasing NFT:', nft);
 
-        const transaction = await marketplaceContract.purchaseNFT(tokenId, {
-          gasLimit: 500000,
-        });
+        const totalCost = ethers.utils.parseUnits((nft.price * nft.amount).toString(), 'ether'); // Calculate the total cost
+
+        const transaction = listingType === 'erc20'
+          ? await marketplaceContract.purchaseNFT(tokenId, { gasLimit: 500000 })
+          : await marketplaceContract.purchaseERC1155(tokenId, nft.amount, { value: totalCost, gasLimit: 500000 });
 
         await transaction.wait();
         alert('NFT purchased successfully!');
@@ -435,8 +439,8 @@ const ViewNFTs = () => {
         console.error('Error purchasing NFT:', error);
 
         let message = 'Failed to purchase NFT.';
-        if (error?.error?.message) {
-          message = error.error.message;
+        if (error?.data?.message) {
+          message = error.data.message;
         } else if (error?.message) {
           message = error.message;
         }
@@ -448,28 +452,38 @@ const ViewNFTs = () => {
   };
 
 
-
   return (
     <div className="App">
       <h1>NFT Collection: {address}</h1>
       <div className="nft-collection">
         {nftCollection.map((nft, index) => (
           <div key={index} className="nft-item">
-            <img src={nft.imageUrl} alt={nft.nftName} />
-            <div>{nft.nftName}</div>
-            <div>{nft.nftDescription}</div>
-            <div>{nft.price} ETH</div>
+            {nft.listingType === 'erc20' ? (
+              <>
+                <img src={nft.imageUrl} alt={nft.nftName} />
+                <div>{nft.nftName}</div>
+                <div>{nft.nftDescription}</div>
+                <div>{nft.price} Tokens</div>
+              </>
+            ) : (
+              <>
+                <div>{nft.nftName}</div>
+                <div>{nft.nftDescription}</div>
+                <div>{nft.amount} available</div>
+                <div>{nft.price} ETH (Total: {(nft.amount * nft.price).toFixed(4)} ETH)</div> {/* Display total cost */}
+              </>
+            )}
             {nft.status === 'sold' ? (
               <div>Status: Sold</div>
             ) : (
-              <button onClick={() => handlePurchase(nft.tokenId)}>Buy NFT</button>
+              <button onClick={() => handlePurchase(nft.tokenId, nft.listingType)}>Buy NFT</button>
             )}
           </div>
         ))}
       </div>
     </div>
   );
-
 };
+
 
 export default App;
