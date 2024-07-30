@@ -258,11 +258,11 @@ const ListNFT = () => {
       let transaction;
       if (values.listingType === 'erc20') {
         transaction = await contract.createNFT(metadataUrl, values.paymentTokenAddress, ethers.utils.parseUnits(values.price.toString(), 18), {
-          gasLimit: 500000,
+          gasLimit: 600000,
         });
       } else if (values.listingType === 'erc1155') {
         transaction = await contract.listERC1155(values.erc1155TokenAddress, values.tokenId, values.amount, ethers.utils.parseUnits(values.price.toString(), 18), {
-          gasLimit: 500000,
+          gasLimit: 600000,
         });
       }
 
@@ -308,7 +308,8 @@ const ListNFT = () => {
 
 const ViewNFTs = () => {
   const { address } = useParams<{ address: string }>();
-  const [nftCollection, setNftCollection] = useState<any[]>([]);
+  const [erc20NftCollection, setErc20NftCollection] = useState<any[]>([]);
+  const [erc1155NftCollection, setErc1155NftCollection] = useState<any[]>([]);
   const [marketplaceContract, setMarketplaceContract] = useState<ethers.Contract | null>(null);
   const [currentAccount, setCurrentAccount] = useState<string | null>(null);
 
@@ -351,15 +352,16 @@ const ViewNFTs = () => {
         imageUrl: '', // Add your image URL here if you have any, otherwise handle this in the render function
         nftName: 'ERC1155 Token',
         nftDescription: `Amount: ${item.amount}`,
+        status: item.owner.toLowerCase() === currentAccount?.toLowerCase() ? 'sold' : 'available',
       }));
 
-      setNftCollection([...items, ...erc1155ItemsProcessed]);
+      setErc20NftCollection(items);
+      setErc1155NftCollection(erc1155ItemsProcessed);
       console.log('NFTs fetched:', items, erc1155ItemsProcessed);
     } catch (error) {
       console.error('Error fetching NFTs:', error);
     }
   }, [address, marketplaceContract, currentAccount]);
-
 
   useEffect(() => {
     const initializeContract = async () => {
@@ -389,11 +391,16 @@ const ViewNFTs = () => {
         const signer = provider.getSigner();
         const account = await signer.getAddress();
 
-        const nft = nftCollection.find(nft => nft.tokenId === tokenId);
+        const nft = listingType === 'erc20'
+          ? erc20NftCollection.find(nft => nft.tokenId === tokenId)
+          : erc1155NftCollection.find(nft => nft.tokenId === tokenId);
         if (!nft) {
           console.error('NFT not found');
           return;
         }
+
+        console.log('NFT:', nft);
+        console.log('Listing Type:', listingType);
 
         if (listingType === 'erc20') {
           const paymentHandlerAddress = await marketplaceContract.paymentHandler();
@@ -422,17 +429,30 @@ const ViewNFTs = () => {
             await approveTx.wait();
             console.log('Tokens approved successfully.');
           }
+
+          console.log('Purchasing ERC20 NFT with price:', priceInWei.toString());
+
+          const transaction = await marketplaceContract.purchaseNFT(tokenId, { gasLimit: 500000 });
+          await transaction.wait();
+        } else if (listingType === 'erc1155') {
+          console.log('ERC1155 Purchase:', nft);
+
+          const priceInWei = ethers.utils.parseUnits(nft.price.toString(), 'ether');
+          const amount = nft.amount;
+
+          console.log('Price in Wei:', priceInWei.toString());
+          console.log('Amount:', amount);
+
+          // Ensure all required values are defined
+          if (!priceInWei || !amount || !tokenId) {
+            console.error('Missing required values for ERC1155 purchase');
+            return;
+          }
+
+          const transaction = await marketplaceContract.purchaseERC1155(tokenId, amount, { value: priceInWei.mul(amount), gasLimit: 500000 });
+          await transaction.wait();
         }
 
-        console.log('Purchasing NFT:', nft);
-
-        const totalCost = ethers.utils.parseUnits((nft.price * nft.amount).toString(), 'ether'); // Calculate the total cost
-
-        const transaction = listingType === 'erc20'
-          ? await marketplaceContract.purchaseNFT(tokenId, { gasLimit: 500000 })
-          : await marketplaceContract.purchaseERC1155(tokenId, nft.amount, { value: totalCost, gasLimit: 500000 });
-
-        await transaction.wait();
         alert('NFT purchased successfully!');
         fetchNFTs();
       } catch (error: any) {
@@ -451,28 +471,29 @@ const ViewNFTs = () => {
     }
   };
 
-
   return (
     <div className="App">
       <h1>NFT Collection: {address}</h1>
       <div className="nft-collection">
-        {nftCollection.map((nft, index) => (
+        {erc20NftCollection.map((nft, index) => (
           <div key={index} className="nft-item">
-            {nft.listingType === 'erc20' ? (
-              <>
-                <img src={nft.imageUrl} alt={nft.nftName} />
-                <div>{nft.nftName}</div>
-                <div>{nft.nftDescription}</div>
-                <div>{nft.price} Tokens</div>
-              </>
+            <img src={nft.imageUrl} alt={nft.nftName} />
+            <div>{nft.nftName}</div>
+            <div>{nft.nftDescription}</div>
+            <div>{nft.price} Tokens</div>
+            {nft.status === 'sold' ? (
+              <div>Status: Sold</div>
             ) : (
-              <>
-                <div>{nft.nftName}</div>
-                <div>{nft.nftDescription}</div>
-                <div>{nft.amount} available</div>
-                <div>{nft.price} ETH (Total: {(nft.amount * nft.price).toFixed(4)} ETH)</div> {/* Display total cost */}
-              </>
+              <button onClick={() => handlePurchase(nft.tokenId, nft.listingType)}>Buy NFT</button>
             )}
+          </div>
+        ))}
+        {erc1155NftCollection.map((nft, index) => (
+          <div key={index} className="nft-item">
+            <div>{nft.nftName}</div>
+            <div>{nft.nftDescription}</div>
+            <div>{nft.amount} available</div>
+            <div>{nft.price} ETH (Total: {(nft.amount * nft.price).toFixed(4)} ETH)</div>
             {nft.status === 'sold' ? (
               <div>Status: Sold</div>
             ) : (
@@ -484,6 +505,5 @@ const ViewNFTs = () => {
     </div>
   );
 };
-
 
 export default App;
