@@ -2,20 +2,12 @@ import React, { useState } from 'react';
 import { useFormik } from 'formik';
 import './NFTForm.css';
 
-// interface NFTFormValues {
-//   nftName: string;
-//   nftDescription: string;
-//   price: number;
-//   paymentTokenAddress: string;
-//   imageContent: string;
-// }
-
 interface NFTFormProps {
   onSubmit: (values: any) => void;
 }
 
 export default function NFTForm(props: NFTFormProps) {
-  const [listingType, setListingType] = useState<'erc20' | 'erc1155'>('erc20');
+  const [listingType, setListingType] = useState<'erc20' | 'erc1155' | 'signature'>('erc20');
 
   const formik = useFormik({
     initialValues: {
@@ -46,7 +38,7 @@ export default function NFTForm(props: NFTFormProps) {
   };
 
   const handleListingTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedType = event.target.value as 'erc20' | 'erc1155';
+    const selectedType = event.target.value as 'erc20' | 'erc1155' | 'signature';
     setListingType(selectedType);
     setFieldValue('listingType', selectedType);
   };
@@ -57,6 +49,7 @@ export default function NFTForm(props: NFTFormProps) {
       <select id="listingType" name="listingType" value={values.listingType} onChange={handleListingTypeChange} required>
         <option value="erc20">ERC20 Payment</option>
         <option value="erc1155">ERC1155 Listing</option>
+        <option value="signature">Signature</option>
       </select>
 
       {listingType === 'erc1155' && (
@@ -122,7 +115,7 @@ export default function NFTForm(props: NFTFormProps) {
         required
       />
 
-      {listingType === 'erc20' && (
+      {listingType !== 'erc1155' && (
         <>
           <label htmlFor="paymentTokenAddress">Payment Token Address</label>
           <input

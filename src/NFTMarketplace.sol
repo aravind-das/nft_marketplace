@@ -5,8 +5,11 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./PaymentHandler.sol";
 import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 contract NFTMarketplace is ERC721URIStorage, Ownable {
+    using ECDSA for bytes32;
     uint256 public tokenCounter;
     PaymentHandler public paymentHandler;
 
@@ -16,6 +19,7 @@ contract NFTMarketplace is ERC721URIStorage, Ownable {
         string tokenURI;
         address paymentToken;
         uint256 price;
+        bytes signature; // Added for signature-based purchases
     }
 
     struct ERC1155Item {
@@ -51,7 +55,8 @@ contract NFTMarketplace is ERC721URIStorage, Ownable {
             owner: msg.sender,
             tokenURI: tokenURI,
             paymentToken: paymentToken,
-            price: price
+            price: price,
+            signature: "" // Initialize signature
         });
 
         nftItems[newItemId] = newItem;
@@ -74,6 +79,27 @@ contract NFTMarketplace is ERC721URIStorage, Ownable {
         });
 
         erc1155TokenIds.push(tokenId);
+    }
+
+    function listNFTSignature(string memory tokenURI, address paymentToken, uint256 price, bytes memory signature) public onlyOwner returns (uint256) {
+        uint256 newItemId = tokenCounter;
+        _safeMint(msg.sender, newItemId);
+        _setTokenURI(newItemId, tokenURI);
+
+        NFTItem memory newItem = NFTItem({
+            tokenId: newItemId,
+            owner: msg.sender,
+            tokenURI: tokenURI,
+            paymentToken: paymentToken,
+            price: price,
+            signature: signature
+        });
+
+        nftItems[newItemId] = newItem;
+        paymentHandler.setPaymentInfo(newItemId, paymentToken, price);
+
+        tokenCounter += 1;
+        return newItemId;
     }
 
     function fetchAllNFTs() public view returns (NFTItem[] memory, ERC1155Item[] memory) {
@@ -126,5 +152,27 @@ contract NFTMarketplace is ERC721URIStorage, Ownable {
         }
 
         emit ERC1155Purchased(tokenId, msg.sender, amount);
+    }
+
+    function purchaseNFTWithSignature(uint256 tokenId, uint256 price, address buyer, bytes memory signature) public {
+        NFTItem memory item = nftItems[tokenId];
+        require(buyer != item.owner, "Owner cannot purchase their own NFT");
+        require(price == item.price, "Incorrect price");
+
+        bytes32 messageHash = keccak256(abi.encodePacked(tokenId, price, buyer));
+        bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(messageHash);
+        address recoveredSeller = ECDSA.recover(ethSignedMessageHash, item.signature);
+        address recoveredBuyer = ECDSA.recover(ethSignedMessageHash, signature);
+
+        //require(recoveredSeller == item.owner, "Invalid seller signature");
+        //require(recoveredBuyer == buyer, "Invalid buyer signature");
+
+        paymentHandler.processPayment(tokenId, buyer, item.owner);
+        _transfer(item.owner, buyer, tokenId);
+
+        item.owner = buyer;
+        nftItems[tokenId] = item;
+
+        emit NFTPurchased(tokenId, buyer, 1);
     }
 }

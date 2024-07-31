@@ -264,12 +264,29 @@ const ListNFT = () => {
         transaction = await contract.listERC1155(values.erc1155TokenAddress, values.tokenId, values.amount, ethers.utils.parseUnits(values.price.toString(), 18), {
           gasLimit: 600000,
         });
+      } else if (values.listingType === 'signature') {
+        const messageHash = ethers.utils.solidityKeccak256(['string', 'address', 'uint256'], [metadataUrl, values.paymentTokenAddress, ethers.utils.parseUnits(values.price.toString(), 18)]);
+        const signature = await signer.signMessage(ethers.utils.arrayify(messageHash));
+        console.log('Seller Signature:', signature);
+
+        transaction = await contract.listNFTSignature(metadataUrl, values.paymentTokenAddress, ethers.utils.parseUnits(values.price.toString(), 18), signature, {
+          gasLimit: 600000,
+        });
+
+        const newNftItem: any = {
+          ...values,
+          status: 'available',
+          tokenId: transaction.tokenId,
+          owner: await signer.getAddress(),
+          signature: signature, // Ensure to store the signature
+        };
+
+        setNftCollection([...nftCollection, newNftItem]);
       }
 
       const receipt = await transaction.wait();
       console.log('Transaction successful:', transaction.hash);
 
-      // Check if receipt.events[0] and args are defined
       const tokenId = receipt.events && receipt.events[0] && receipt.events[0].args && receipt.events[0].args.tokenId
         ? receipt.events[0].args.tokenId.toNumber()
         : values.tokenId;
@@ -312,6 +329,7 @@ const ViewNFTs = () => {
   const [erc1155NftCollection, setErc1155NftCollection] = useState<any[]>([]);
   const [marketplaceContract, setMarketplaceContract] = useState<ethers.Contract | null>(null);
   const [currentAccount, setCurrentAccount] = useState<string | null>(null);
+  const [signatureInput, setSignatureInput] = useState<string>('');
 
   const fetchNFTs = useCallback(async () => {
     if (!address || !marketplaceContract || !currentAccount) return;
@@ -324,7 +342,8 @@ const ViewNFTs = () => {
         const tokenURI = nft[2];
         const paymentToken = nft[3];
         const price = ethers.utils.formatUnits(nft[4].toString(), 'ether'); // Convert BigNumber to string and format as ether
-
+        const signature = nft[5]; // Add signature to fetched data
+        
         const meta = await fetch(tokenURI).then((response) => response.json());
         const status = owner.toLowerCase() === currentAccount?.toLowerCase() ? 'sold' : 'available';
 
@@ -339,6 +358,7 @@ const ViewNFTs = () => {
           nftDescription: meta.description,
           status: status,
           listingType: 'erc20',
+          signature: signature, // Include the signature in the returned data
         };
       }));
 
@@ -471,6 +491,76 @@ const ViewNFTs = () => {
     }
   };
 
+  const handlePurchaseWithSignature = async (tokenId: number, sellerSignature: string) => {
+    if (marketplaceContract) {
+      try {
+        const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+        const signer = provider.getSigner();
+        const account = await signer.getAddress();
+        
+        const nft = erc20NftCollection.find(nft => nft.tokenId === tokenId);
+        if (!nft) {
+          console.error('NFT not found');
+          return;
+        }
+
+        const priceInWei = ethers.utils.parseUnits(nft.price.toString(), 18);
+
+        const messageHash = ethers.utils.solidityKeccak256(['uint256', 'uint256', 'address'], [tokenId, priceInWei, account]);
+
+        // Compare the provided buyer signature with the stored seller signature
+        if (sellerSignature !== nft.signature) {
+          alert('Signature mismatch. Please provide the correct signature.');
+          return;
+        }
+
+        const paymentHandlerAddress = await marketplaceContract.paymentHandler();
+        const paymentToken = new ethers.Contract(nft.paymentTokenAddress, [
+          "function balanceOf(address owner) view returns (uint256)",
+          "function allowance(address owner, address spender) view returns (uint256)",
+          "function approve(address spender, uint256 value) public returns (bool)"
+        ], signer);
+
+        const tokenBalance = await paymentToken.balanceOf(account);
+        const allowance = await paymentToken.allowance(account, paymentHandlerAddress);
+
+        console.log('ERC20 Token Balance:', tokenBalance.toString());
+        console.log('Allowance:', allowance.toString());
+
+        if (tokenBalance.lt(priceInWei)) {
+          alert('Insufficient token balance to purchase NFT.');
+          return;
+        }
+
+        if (allowance.lt(priceInWei)) {
+          const approveTx = await paymentToken.approve(paymentHandlerAddress, priceInWei);
+          await approveTx.wait();
+          console.log('Tokens approved successfully.');
+        }
+
+        const transaction = await marketplaceContract.purchaseNFTWithSignature(tokenId, priceInWei, account, sellerSignature, {
+          gasLimit: 500000,
+        });
+
+        await transaction.wait();
+        alert('NFT purchased successfully with signature!');
+        fetchNFTs();
+      } catch (error: any) {
+        console.error('Error purchasing NFT with signature:', error);
+
+        let message = 'Failed to purchase NFT.';
+        if (error?.error?.message) {
+          message = error.error.message;
+        } else if (error?.message) {
+          message = error.message;
+        }
+        alert(message);
+      }
+    } else {
+      console.error('Marketplace contract is not initialized');
+    }
+  };
+
   return (
     <div className="App">
       <h1>NFT Collection: {address}</h1>
@@ -484,7 +574,20 @@ const ViewNFTs = () => {
             {nft.status === 'sold' ? (
               <div>Status: Sold</div>
             ) : (
-              <button onClick={() => handlePurchase(nft.tokenId, nft.listingType)}>Buy NFT</button>
+              <>
+                <button onClick={() => handlePurchase(nft.tokenId, nft.listingType)}>Buy NFT</button>
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Enter Seller's Signature"
+                    value={signatureInput}
+                    onChange={(e) => setSignatureInput(e.target.value)}
+                  />
+                  <button onClick={() => handlePurchaseWithSignature(nft.tokenId, signatureInput)}>
+                    Buy NFT with Signature
+                  </button>
+                </div>
+              </>
             )}
           </div>
         ))}
