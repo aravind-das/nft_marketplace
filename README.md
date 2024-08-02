@@ -3,7 +3,7 @@
 ## Application Deployed on IPFS
 
 IPFS Hash: bafybeiedlpilzbzsnsqqla4legl4wt7u6af2uqakfm74l5gk2vkfo2ze74
-App can be accessed through  URL fleek: [https://crashing-engine-hissing.on-fleek.app/](https://modern-city-whispering.on-fleek.app)
+App can be accessed through  URL fleek: https://modern-city-whispering.on-fleek.app
 
 
 ## Available Scripts
