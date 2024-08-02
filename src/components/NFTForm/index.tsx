@@ -7,7 +7,7 @@ interface NFTFormProps {
 }
 
 export default function NFTForm(props: NFTFormProps) {
-  const [listingType, setListingType] = useState<'erc20' | 'erc1155' | 'signature'>('erc20');
+  const [listingType, setListingType] = useState<'erc20' | 'erc1155' | 'signature' | 'governance'>('erc20');
 
   const formik = useFormik({
     initialValues: {
@@ -38,7 +38,7 @@ export default function NFTForm(props: NFTFormProps) {
   };
 
   const handleListingTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedType = event.target.value as 'erc20' | 'erc1155' | 'signature';
+    const selectedType = event.target.value as 'erc20' | 'erc1155' | 'signature' | 'governance';
     setListingType(selectedType);
     setFieldValue('listingType', selectedType);
   };
@@ -50,6 +50,7 @@ export default function NFTForm(props: NFTFormProps) {
         <option value="erc20">ERC20 Payment</option>
         <option value="erc1155">ERC1155 Listing</option>
         <option value="signature">Signature</option>
+        <option value="governance">Governance Proposal</option>
       </select>
 
       {listingType === 'erc1155' && (
@@ -83,10 +84,8 @@ export default function NFTForm(props: NFTFormProps) {
             onChange={handleChange}
             required
           />
-        </>
-      )}
 
-      <label htmlFor="nftName">NFT Name</label>
+<label htmlFor="nftName">NFT Name</label>
       <input
         id="nftName"
         type="text"
@@ -114,9 +113,50 @@ export default function NFTForm(props: NFTFormProps) {
         onChange={handleChange}
         required
       />
+       <label htmlFor="image">Choose Image</label>
+          <input
+            id="image"
+            type="file"
+            accept="image/*"
+            onChange={handleImageUpload}
+            required
+          />
+        </>
+      )}
+      
+      
 
-      {listingType !== 'erc1155' && (
+      {(listingType === 'erc20' || listingType === 'signature') && (
         <>
+          <label htmlFor="nftName">NFT Name</label>
+          <input
+            id="nftName"
+            type="text"
+            name="nftName"
+            value={values.nftName}
+            onChange={handleChange}
+            required
+          />
+
+          <label htmlFor="nftDescription">NFT Description</label>
+          <textarea
+            id="nftDescription"
+            name="nftDescription"
+            value={values.nftDescription}
+            onChange={handleChange}
+            required
+          />
+
+          <label htmlFor="price">Price</label>
+          <input
+            id="price"
+            type="number"
+            name="price"
+            value={values.price}
+            onChange={handleChange}
+            required
+          />
+
           <label htmlFor="paymentTokenAddress">Payment Token Address</label>
           <input
             id="paymentTokenAddress"
@@ -126,19 +166,73 @@ export default function NFTForm(props: NFTFormProps) {
             onChange={handleChange}
             required
           />
+
+          <label htmlFor="image">Choose Image</label>
+          <input
+            id="image"
+            type="file"
+            accept="image/*"
+            onChange={handleImageUpload}
+            required
+          />
+
+          
         </>
       )}
 
-      <label htmlFor="image">Choose Image</label>
-      <input
-        id="image"
-        type="file"
-        accept="image/*"
-        onChange={handleImageUpload}
-        required
-      />
+      {listingType === 'governance' && (
+        <>
+          <label htmlFor="nftName">NFT Name</label>
+          <input
+            id="nftName"
+            type="text"
+            name="nftName"
+            value={values.nftName}
+            onChange={handleChange}
+            required
+          />
 
-      <button type="submit">List NFT</button>
+          <label htmlFor="nftDescription">NFT Description</label>
+          <textarea
+            id="nftDescription"
+            name="nftDescription"
+            value={values.nftDescription}
+            onChange={handleChange}
+            required
+          />
+
+          <label htmlFor="price">Price</label>
+          <input
+            id="price"
+            type="number"
+            name="price"
+            value={values.price}
+            onChange={handleChange}
+            required
+          />
+
+          <label htmlFor="paymentTokenAddress">Payment Token Address</label>
+          <input
+            id="paymentTokenAddress"
+            type="text"
+            name="paymentTokenAddress"
+            value={values.paymentTokenAddress}
+            onChange={handleChange}
+            required
+          />
+
+          <label htmlFor="image">Choose Image</label>
+          <input
+            id="image"
+            type="file"
+            accept="image/*"
+            onChange={handleImageUpload}
+            required
+          />
+        </>
+      )}
+
+      <button type="submit">{listingType === 'governance' ? 'Create Proposal' : 'List NFT'}</button>
     </form>
   );
 }
