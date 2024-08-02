@@ -36,14 +36,24 @@ const wagmiClient = createConfig({
 
 // Helper function to convert base64 to Blob
 const base64ToBlob = (base64: string, type: string) => {
-  const byteCharacters = atob(base64.split(',')[1]);
-  const byteNumbers = new Array(byteCharacters.length);
-  for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  try {
+    const base64Data = base64.split(',')[1];
+    if (!base64Data) {
+      throw new Error('Invalid Base64 string');
+    }
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type });
+  } catch (error) {
+    console.error('Error converting Base64 string to Blob:', error);
+    throw error;
   }
-  const byteArray = new Uint8Array(byteNumbers);
-  return new Blob([byteArray], { type });
 };
+
 
 // Contract addresses
 const FACTORY_CONTRACT_ADDRESS = process.env.REACT_APP_FACTORY_CONTRACT_ADDRESS || '';
@@ -92,6 +102,7 @@ const App = () => {
             <Route path="/collections/:address" element={<CollectionOptions />} />
             <Route path="/collections/:address/list-nft" element={<ListNFT />} />
             <Route path="/collections/:address/view-nfts" element={<ViewNFTs />} />
+            <Route path="/collections/:address/proposals" element={<Proposals />} />
           </Routes>
         </Router>
       </QueryClientProvider>
@@ -197,6 +208,9 @@ const CollectionOptions = () => {
           <li>
             <Link to={`/collections/${address}/view-nfts`}>View NFTs</Link>
           </li>
+          <li>
+            <Link to={`/collections/${address}/proposals`}>Governance Proposals</Link>
+          </li>
         </ul>
       </nav>
     </div>
@@ -213,7 +227,7 @@ const ListNFT = () => {
       const blob = base64ToBlob(values.imageContent, 'image/png');
       const data = new FormData();
       data.append('file', blob, 'image.png');
-
+  
       const imageRes = await axios.post('https://api.pinata.cloud/pinning/pinFileToIPFS', data, {
         maxContentLength: Infinity,
         headers: {
@@ -222,20 +236,20 @@ const ListNFT = () => {
           pinata_secret_api_key: pinataSecretApiKey,
         },
       });
-
+  
       const imageUrl = `https://gateway.pinata.cloud/ipfs/${imageRes.data.IpfsHash}`;
       console.log('Image uploaded to IPFS:', imageUrl);
-
+  
       const metadata = {
         name: values.nftName,
         description: values.nftDescription,
         image: imageUrl,
       };
-
+  
       const metadataBlob = new Blob([JSON.stringify(metadata)], { type: 'application/json' });
       const metadataData = new FormData();
       metadataData.append('file', metadataBlob, 'metadata.json');
-
+  
       const metadataRes = await axios.post('https://api.pinata.cloud/pinning/pinFileToIPFS', metadataData, {
         maxContentLength: Infinity,
         headers: {
@@ -244,17 +258,17 @@ const ListNFT = () => {
           pinata_secret_api_key: pinataSecretApiKey,
         },
       });
-
+  
       const metadataUrl = `https://gateway.pinata.cloud/ipfs/${metadataRes.data.IpfsHash}`;
       console.log('Metadata uploaded to IPFS:', metadataUrl);
-
+  
       const provider = new ethers.providers.Web3Provider((window as any).ethereum);
       const signer = provider.getSigner();
       console.log('Provider and signer initialized');
       const contract = new ethers.Contract(address!, NFTMarketplace.abi, signer);
-
+  
       console.log('Calling createNFT with Metadata URL:', metadataUrl);
-
+  
       let transaction;
       if (values.listingType === 'erc20') {
         transaction = await contract.createNFT(metadataUrl, values.paymentTokenAddress, ethers.utils.parseUnits(values.price.toString(), 18), {
@@ -268,11 +282,11 @@ const ListNFT = () => {
         const messageHash = ethers.utils.solidityKeccak256(['string', 'address', 'uint256'], [metadataUrl, values.paymentTokenAddress, ethers.utils.parseUnits(values.price.toString(), 18)]);
         const signature = await signer.signMessage(ethers.utils.arrayify(messageHash));
         console.log('Seller Signature:', signature);
-
+  
         transaction = await contract.listNFTSignature(metadataUrl, values.paymentTokenAddress, ethers.utils.parseUnits(values.price.toString(), 18), signature, {
           gasLimit: 600000,
         });
-
+  
         const newNftItem: any = {
           ...values,
           status: 'available',
@@ -280,30 +294,36 @@ const ListNFT = () => {
           owner: await signer.getAddress(),
           signature: signature, // Ensure to store the signature
         };
-
+  
         setNftCollection([...nftCollection, newNftItem]);
+      } else if (values.listingType === 'governance') {
+        transaction = await contract.createProposal(metadataUrl, values.paymentTokenAddress, ethers.utils.parseUnits(values.price.toString(), 18), {
+          gasLimit: 600000,
+        });
+        await transaction.wait();
+        alert('Governance proposal created successfully!');
       }
-
+  
       const receipt = await transaction.wait();
       console.log('Transaction successful:', transaction.hash);
-
+  
       const tokenId = receipt.events && receipt.events[0] && receipt.events[0].args && receipt.events[0].args.tokenId
         ? receipt.events[0].args.tokenId.toNumber()
         : values.tokenId;
-
+  
       const newNftItem: any = {
         ...values,
         status: 'available',
         tokenId: tokenId,
         owner: await signer.getAddress(),
       };
-
+  
       setNftCollection([...nftCollection, newNftItem]);
-
+  
       alert('Image and metadata uploaded, and NFT created successfully!');
     } catch (error: any) {
       console.error('Error uploading file:', error);
-
+  
       let message = 'Failed to upload image or create NFT.';
       if (error?.error?.message) {
         message = error.error.message;
@@ -313,6 +333,7 @@ const ListNFT = () => {
       alert(message);
     }
   };
+  
 
 
   return (
@@ -322,6 +343,7 @@ const ListNFT = () => {
     </div>
   );
 };
+
 
 const ViewNFTs = () => {
   const { address } = useParams<{ address: string }>();
@@ -602,6 +624,109 @@ const ViewNFTs = () => {
             ) : (
               <button onClick={() => handlePurchase(nft.tokenId, nft.listingType)}>Buy NFT</button>
             )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const Proposals = () => {
+  const { address } = useParams<{ address: string }>();
+  const [proposals, setProposals] = useState<any[]>([]);
+  const [marketplaceContract, setMarketplaceContract] = useState<ethers.Contract | null>(null);
+  const [currentAccount, setCurrentAccount] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchProposals = async () => {
+      if (!address || !marketplaceContract || !currentAccount) return;
+
+      try {
+        const proposalCount = await marketplaceContract.proposalCounter();
+        const fetchedProposals = [];
+        for (let i = 0; i < proposalCount; i++) {
+          const proposal = await marketplaceContract.proposals(i);
+          fetchedProposals.push({
+            id: proposal.id.toNumber(),
+            tokenURI: proposal.tokenURI,
+            paymentToken: proposal.paymentToken,
+            price: ethers.utils.formatUnits(proposal.price.toString(), 'ether'),
+            votes: proposal.votes.toNumber(),
+            executed: proposal.executed,
+          });
+        }
+        setProposals(fetchedProposals);
+      } catch (error) {
+        console.error('Error fetching proposals:', error);
+      }
+    };
+
+    if (marketplaceContract) {
+      fetchProposals();
+    }
+  }, [address, marketplaceContract, currentAccount]);
+
+  useEffect(() => {
+    const initializeContract = async () => {
+      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const signer = provider.getSigner();
+      const contract = new ethers.Contract(address!, NFTMarketplace.abi, signer);
+      setMarketplaceContract(contract);
+
+      // Get current account
+      const accounts = await provider.send("eth_requestAccounts", []);
+      setCurrentAccount(accounts[0]);
+    };
+
+    if (address) {
+      initializeContract();
+    }
+  }, [address]);
+
+  const handleVote = async (proposalId: number) => {
+    if (marketplaceContract) {
+      try {
+        const transaction = await marketplaceContract.voteOnProposal(proposalId);
+        await transaction.wait();
+        alert('Voted successfully!');
+      } catch (error: any) {
+        console.error('Error voting on proposal:', error);
+        alert('Failed to vote on proposal.');
+      }
+    } else {
+      console.error('Marketplace contract is not initialized');
+    }
+  };
+
+  const handleExecute = async (proposalId: number) => {
+    if (marketplaceContract) {
+      try {
+        const transaction = await marketplaceContract.executeProposal(proposalId);
+        await transaction.wait();
+        alert('Proposal executed successfully!');
+      } catch (error: any) {
+        console.error('Error executing proposal:', error);
+        alert('Failed to execute proposal.');
+      }
+    } else {
+      console.error('Marketplace contract is not initialized');
+    }
+  };
+
+  return (
+    <div className="App">
+      <h1>Governance Proposals</h1>
+      <div className="proposal-list">
+        {proposals.map((proposal, index) => (
+          <div key={index} className="proposal-item">
+            <div>Proposal ID: {proposal.id}</div>
+            <div>Token URI: {proposal.tokenURI}</div>
+            <div>Payment Token: {proposal.paymentToken}</div>
+            <div>Price: {proposal.price} ETH</div>
+            <div>Votes: {proposal.votes}</div>
+            <div>Status: {proposal.executed ? 'Executed' : 'Pending'}</div>
+            <button onClick={() => handleVote(proposal.id)} disabled={proposal.executed}>Vote</button>
+            <button onClick={() => handleExecute(proposal.id)} disabled={proposal.executed}>Execute</button>
           </div>
         ))}
       </div>

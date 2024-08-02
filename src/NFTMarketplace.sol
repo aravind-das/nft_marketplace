@@ -19,7 +19,7 @@ contract NFTMarketplace is ERC721URIStorage, Ownable {
         string tokenURI;
         address paymentToken;
         uint256 price;
-        bytes signature; // Added for signature-based purchases
+        bytes signature;
     }
 
     struct ERC1155Item {
@@ -30,12 +30,28 @@ contract NFTMarketplace is ERC721URIStorage, Ownable {
         uint256 price;
     }
 
+    struct Proposal {
+        uint256 id;
+        string tokenURI;
+        address paymentToken;
+        uint256 price;
+        uint256 votes;
+        bool executed;
+        mapping(address => bool) voted;
+    }
+
     mapping(uint256 => NFTItem) public nftItems;
     mapping(uint256 => ERC1155Item) public erc1155Items;
+    mapping(uint256 => Proposal) public proposals;
+
     uint256[] public erc1155TokenIds;
+    uint256 public proposalCounter;
 
     event NFTPurchased(uint256 indexed tokenId, address buyer, uint256 amount);
     event ERC1155Purchased(uint256 indexed tokenId, address buyer, uint256 amount);
+    event ProposalCreated(uint256 indexed proposalId, string tokenURI, address paymentToken, uint256 price);
+    event Voted(uint256 indexed proposalId, address voter);
+    event ProposalExecuted(uint256 indexed proposalId, uint256 newItemId);
 
     constructor(string memory name, string memory symbol, address owner, address paymentHandlerAddress)
         ERC721(name, symbol)
@@ -100,6 +116,57 @@ contract NFTMarketplace is ERC721URIStorage, Ownable {
 
         tokenCounter += 1;
         return newItemId;
+    }
+
+    function createProposal(string memory tokenURI, address paymentToken, uint256 price) public onlyOwner {
+        uint256 proposalId = proposalCounter;
+        Proposal storage proposal = proposals[proposalId];
+        proposal.id = proposalId;
+        proposal.tokenURI = tokenURI;
+        proposal.paymentToken = paymentToken;
+        proposal.price = price;
+        proposal.votes = 0;
+        proposal.executed = false;
+        proposalCounter++;
+
+        emit ProposalCreated(proposalId, tokenURI, paymentToken, price);
+    }
+
+    function voteOnProposal(uint256 proposalId) public {
+        Proposal storage proposal = proposals[proposalId];
+        require(!proposal.voted[msg.sender], "Already voted");
+
+        proposal.votes++;
+        proposal.voted[msg.sender] = true;
+
+        emit Voted(proposalId, msg.sender);
+    }
+
+    function executeProposal(uint256 proposalId) public onlyOwner {
+        Proposal storage proposal = proposals[proposalId];
+        require(!proposal.executed, "Already executed");
+        require(proposal.votes > 1, "Not enough votes"); // Example threshold
+
+        uint256 newItemId = tokenCounter;
+        _safeMint(msg.sender, newItemId);
+        _setTokenURI(newItemId, proposal.tokenURI);
+
+        NFTItem memory newItem = NFTItem({
+            tokenId: newItemId,
+            owner: msg.sender,
+            tokenURI: proposal.tokenURI,
+            paymentToken: proposal.paymentToken,
+            price: proposal.price,
+            signature: ""
+        });
+
+        nftItems[newItemId] = newItem;
+        paymentHandler.setPaymentInfo(newItemId, proposal.paymentToken, proposal.price);
+
+        tokenCounter++;
+        proposal.executed = true;
+
+        emit ProposalExecuted(proposalId, newItemId);
     }
 
     function fetchAllNFTs() public view returns (NFTItem[] memory, ERC1155Item[] memory) {
